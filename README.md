@@ -120,7 +120,7 @@ That’s valuable for:
 
 - troubleshooting “why is this site broken?”
 
-- building UI dashboards (which you’re already doing)
+- building UI dashboards (which we are already doing)
 
 #### 5) Bypass controls that behave like a “site exception switch”
 
