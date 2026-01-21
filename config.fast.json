@@ -1,0 +1,205 @@
+{
+  "debug_log_matches": false,
+  "debug_log_matches_to_file": false,
+  "debug_log_matches_file": "matches.log",
+  "debug_log_bypass_hit": false,
+  "debug_log_streaming": false,
+  "bypass_include_initiator": true,
+  "bypass_key_mode": "ip_ua",
+  "bypass_active_ttl_seconds": 1800,
+  "bypass_context_ttl_seconds": 120,
+  "bypass_active_touch_interval_sec": 2.0,
+  "bypass_promote_static_to_active": true,
+  "active_bypass_system_hosts": [],
+  "debug_log_injection": false,
+  "bypass_chain_third_party": true,
+  "bypass_static_cache_size": 4096,
+  "ua_tag_cache_size": 2048,
+  "ctx_cleanup_interval_sec": 2.0,
+  "bypass_decision_microcache": {
+    "ttl_sec": 1.0,
+    "size": 8192
+  },
+  "log_bypass_state": false,
+  "debug_telemetry_exceptions": false,
+  "bypass_propagate_from_host": false,
+  "dnr_rulesets": [
+    {
+      "id": "ads",
+      "path": "assets/dnr_rules/ads.json",
+      "enabled": true
+    },
+    {
+      "id": "trk",
+      "path": "assets/dnr_rules/trk.json",
+      "enabled": true
+    },
+    {
+      "id": "cookies",
+      "path": "assets/dnr_rules/cookies.json",
+      "enabled": true
+    },
+    {
+      "id": "others",
+      "path": "assets/dnr_rules/others.json",
+      "enabled": false
+    },
+    {
+      "id": "over",
+      "path": "assets/dnr_rules/over.json",
+      "enabled": false
+    },
+    {
+      "id": "soc",
+      "path": "assets/dnr_rules/soc.json",
+      "enabled": false
+    },
+    {
+      "id": "wid",
+      "path": "assets/dnr_rules/wid.json",
+      "enabled": false
+    },
+    {
+      "id": "site_fixes",
+      "path": "assets/dnr_rules/site_fixes.json",
+      "enabled": true
+    }
+  ],
+  "css_injection": {
+    "enabled": true,
+    "enabled_css_files": [
+      "assets/css/adssgh.css",
+      "assets/css/cookiessgh.css",
+      "assets/css/otherssgh.css",
+      "assets/css/oversgh.css",
+      "assets/css/socsgh.css",
+      "assets/css/widssgh.css"
+    ],
+    "style_id_head": "tg-css-head",
+    "style_id_end": "tg-css-end",
+    "locations": [
+      "head",
+      "end"
+    ]
+  },
+  "js_injection": {
+    "enabled": true,
+    "auto_from_rulesets": true,
+    "base_dir": "assets/js"
+  },
+  "browser_heuristics": {
+    "require_sec_fetch_headers": false,
+    "user_agent_contains_any": [
+      "Chrome/",
+      "Edg/",
+      "Firefox/"
+    ]
+  },
+  "redirect_resources": {
+    "enabled": true,
+    "base_dir": "assets/resources",
+    "known": {
+      "1x1.gif": "1x1.gif",
+      "2x2.png": "2x2.png",
+      "32x32.png": "32x32.png",
+      "amazon_ads.js": "amazon_ads.js",
+      "amazon_apstag.js": "amazon_apstag.js",
+      "chartbeat.js": "chartbeat.js",
+      "click2load.html": "click2load.html",
+      "doubleclick_instream_ad_status.js": "doubleclick_instream_ad_status.js",
+      "empty": "empty",
+      "fingerprint2.js": "fingerprint2.js",
+      "fingerprint3.js": "fingerprint3.js",
+      "google-analytics_analytics.js": "google-analytics_analytics.js",
+      "google-analytics_cx_api.js": "google-analytics_cx_api.js",
+      "google-analytics_ga.js": "google-analytics_ga.js",
+      "google-ima.js": "google-ima.js",
+      "googlesyndication_adsbygoogle.js": "googlesyndication_adsbygoogle.js",
+      "googletagservices_gpt.js": "googletagservices_gpt.js",
+      "hd-main.js": "hd-main.js",
+      "nobab2.js": "nobab2.js",
+      "noeval-silent.js": "noeval-silent.js",
+      "nofab.js": "nofab.js",
+      "noop.css": "noop.css",
+      "noop.html": "noop.html",
+      "noop.js": "noop.js",
+      "noop.json": "noop.json",
+      "noop.txt": "noop.txt",
+      "noop-0.1s.mp3": "noop-0.1s.mp3",
+      "noop-1s.mp4": "noop-1s.mp4",
+      "noop-vast3.xml": "noop-vast3.xml",
+      "noop-vmap1.xml": "noop-vmap1.xml",
+      "outbrain-widget.js": "outbrain-widget.js",
+      "popads.js": "popads.js",
+      "prebid-ads.js": "prebid-ads.js",
+      "scorecardsresearch_beacon.js": "scorecardsresearch_beacon.js"
+    }
+  },
+  "bypass_hosts": [
+    "chatgpt.com",
+    "getsurfsafe.org",
+    "microsoft.com",
+    "mitm.it",
+    "mitmproxy.org",
+    "msn.com",
+    "paypal.com",
+    "slack.com",
+    "slackb.com",
+    "stripe.com"
+  ],
+  "site_allow_hosts": {},
+  "telemetry": {
+    "enabled": true,
+    "log_interval_sec": 15,
+    "log_to_mitmproxy": false,
+    "log_to_file": true,
+    "file_path": "telemetry.log",
+    "top_n": 8
+  },
+  "html_rewrite": {
+    "decode_before_inject": true,
+    "bytes_inject": true,
+    "bytes_inject_utf8_only": true,
+    "prefix_scan_limit": 1048576
+  },
+  "match_cache_enabled": true,
+  "match_cache_size": 30000,
+  "host_decision_cache": {
+    "enabled": true,
+    "size": 8192,
+    "ttl_sec": 120,
+    "min_hits": 2,
+    "count_window_sec": 60
+  },
+  "site_blocklists": [
+    {
+      "id": "blocked_sites",
+      "path": "assets/blocklists/adult.blk",
+      "enabled": true,
+      "page_path": "assets/blocklists/blocked_page_adult.html",
+      "assets_dir": "assets/blocklists"
+    }
+  ],
+  "site_block_enabled": true,
+  "log_site_block": true,
+  "site_block_respects_bypass": false,
+  "site_block_page": {
+    "enabled": true,
+    "path": "assets/blocklists/blocked_page.html",
+    "content_type": "text/html; charset=utf-8",
+    "assets_host": "tg-block.local",
+    "assets_prefix": "/_tg_block_assets/",
+    "assets_dir": "assets/blocklists",
+    "assets_mode": "same_host"
+  },
+  "csp_strip": {
+    "enabled": false,
+    "remove_report_only": true
+  },
+  "csp_nonce_patch": {
+    "enabled": true,
+    "patch_report_only": true,
+    "patch_elem_directives": true,
+    "create_missing_directives": false
+  }
+}
