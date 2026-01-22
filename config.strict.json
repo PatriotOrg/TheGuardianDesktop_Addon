@@ -10,9 +10,15 @@
   "bypass_context_ttl_seconds": 180,
   "bypass_active_touch_interval_sec": 2.0,
   "bypass_promote_static_to_active": true,
+  "bypass_ublock_allowlist": true,
+  "bypass_ublock_no_context_window_sec": 15,
+  "bypass_ublock_max_sites_per_client": 8,
+  "bypass_ublock_client_timeout_sec": 30,
+  "bypass_ublock_scope": "client",
   "active_bypass_system_hosts": [],
   "debug_log_injection": false,
   "bypass_chain_third_party": true,
+  "active_bypass_no_initiator_subrequests": true,
   "bypass_static_cache_size": 4096,
   "ua_tag_cache_size": 2048,
   "ctx_cleanup_interval_sec": 2.0,
@@ -147,7 +153,6 @@
     "slackb.com",
     "stripe.com"
   ],
-  "site_allow_hosts": {},
   "telemetry": {
     "enabled": true,
     "log_interval_sec": 10,
@@ -201,5 +206,13 @@
     "patch_report_only": true,
     "patch_elem_directives": true,
     "create_missing_directives": false
+  },
+  "stream_uploads": {
+    "enabled": true,
+    "min_bytes": 2097152
+  },
+  "stream_downloads": {
+    "enabled": true,
+    "min_bytes": 2097152
   }
 }

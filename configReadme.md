@@ -203,6 +203,82 @@ Recommended:
 
 ---
 
+### `bypass_ublock_allowlist` *(bool)*
+
+If `true`, enables the **uBlock-style allowlist bypass** behavior for hosts in `bypass_hosts`.
+
+Why it exists: in mitmproxy **local interception** modes (e.g. `local:chrome`) it is not always possible to map every third‑party request back to the correct browser tab/top‑frame.  
+Some ad-tech requests may therefore still match ADS/TRK rules even when the site is bypassed.
+
+When enabled, if the user navigates to a bypass host (active bypass), the add-on can apply a *client-scoped* bypass to emulate how uBlock Origin behaves when you add a site to its allowlist.
+
+Default: `false`
+
+---
+
+### `bypass_ublock_scope` *(string)*
+
+Defines how aggressive the uBlock-style allowlist bypass should be.
+
+Supported values:
+
+- `"client"` *(most reliable)*  
+  Bypasses **all TG processing for the entire client** while the bypassed site is active.  
+  ✅ fixes placeholders and restores all ads  
+  ⚠️ other tabs of the same browser client may be temporarily unfiltered
+
+- `"client_ads_only"` *(less intrusive)*  
+  Bypasses only:
+  - the bypassed site itself
+  - + a list of common **ad-tech domains** (see `bypass_ublock_ads_domains`)  
+  ✅ reduces side effects on other tabs  
+  ⚠️ if an ad endpoint is missing from the list, some placeholders may still appear
+
+Default: `"client"`
+
+---
+
+### `bypass_ublock_client_timeout_sec` *(int)*
+
+Optional auto-timeout for the uBlock-style allowlist bypass.
+
+When `> 0`, the add-on automatically disables the client-scoped bypass if it **does not observe traffic related to the active bypassed site** for the specified number of seconds.
+
+This helps avoid leaving the “client bypass” enabled after you have navigated away.
+
+Examples:
+
+- `0` → disabled (no timeout)
+- `20` → disable after 20 seconds of inactivity
+- `30` → disable after 30 seconds of inactivity
+
+Default: `0`
+
+---
+
+### `bypass_ublock_ads_domains` *(array of strings)*
+
+Optional list of **ad-tech domains** used by `"client_ads_only"` scope.
+
+You can use this to override or extend the built-in list.
+
+Example:
+
+```json
+"bypass_ublock_ads_domains": [
+  "doubleclick.net",
+  "googlesyndication.com",
+  "googleadservices.com",
+  "amazon-adsystem.com"
+]
+```
+
+Note: the add-on already ships with a reasonable default list (Criteo, Rubicon, Index, AppNexus, etc.).  
+Leaving this empty is fine.
+
+---
+
+
 ### `active_bypass_system_hosts` *(array of strings)*
 
 Optional allowlist of “system” hosts to bypass while active bypass is enabled.  

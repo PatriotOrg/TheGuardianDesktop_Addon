@@ -356,6 +356,49 @@ If enabled, bypass chaining allows bypass to propagate to third-party requests t
 
 `"bypass_chain_third_party": true`
 
+
+### uBlock-style allowlist bypass (client-scoped)
+
+In **mitmproxy local interception modes** (e.g. `mitmdump --mode local:chrome`) the proxy does **not** expose a real “tab id / top-frame id”.
+Some ad-tech chains also generate requests where the immediate `initiator` is **not** the original website (it can be another ad/SSP domain).
+
+Because of this, a classic “site-scoped” bypass may still see ADS/TRK rules applied to some third-party requests, producing:
+
+- partial ads rendering (empty placeholders)
+- many MATCH lines even on bypassed sites
+- slower page loads
+
+To emulate how a browser adblocker allowlist behaves, TheGuardianDesktop provides an optional **uBlock-style allowlist bypass** controlled by:
+
+- `bypass_ublock_allowlist`
+- `bypass_ublock_scope`
+- `bypass_ublock_client_timeout_sec`
+- `bypass_ublock_ads_domains`
+
+When enabled, and when a bypass host becomes **active** for a client, the add-on can bypass processing using one of these scopes:
+
+- **`client`** *(most reliable)*  
+  Bypasses **everything for the whole client** while the bypassed site is active.  
+  This guarantees no placeholders and maximum speed, but it can temporarily “unfilter” other tabs of the same browser client.
+
+- **`client_ads_only`** *(less intrusive)*  
+  Bypasses the bypassed site + a configurable list of common **ad-tech domains** (DoubleClick / GoogleAds / Amazon / Criteo / Rubicon / …).  
+  This reduces side effects on other tabs, but if an ad endpoint is missing from the list you may still see some placeholders.
+
+Optional safety: `bypass_ublock_client_timeout_sec` automatically disables the client-scoped bypass if no traffic related to the bypassed site is observed for *N* seconds.
+
+Example configuration:
+
+```json
+{
+  "bypass_hosts": ["thesun.co.uk"],
+  "bypass_ublock_allowlist": true,
+  "bypass_ublock_scope": "client",
+  "bypass_ublock_client_timeout_sec": 25
+}
+```
+
+
 ### Client key mode + TTL
 
 Active bypass is tracked per “client key”:
