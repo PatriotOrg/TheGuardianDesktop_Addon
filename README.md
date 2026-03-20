@@ -1,603 +1,367 @@
-# TheGuardianDesktop (mitmproxy add-on)
+# TheGuardian Addon v.2
 
-## Preface
+## Overview
 
-**TheGuardianDesktop** is a [mitmproxy/mitmdump](https://www.mitmproxy.org/) add-on that emulates key behaviors of a browser ad/tracker blocker (like TheGuardian Extension), but at the **network/proxy layer**.
+TheGuardian Addon is a mitmproxy addon that behaves like a browser-side content blocker, but runs at the proxy layer. It emulates a browser-level blocker without relying on browser extensions.
 
-It does two main things:
+Its responsibilities include:
 
-1. **Applies static blocking/redirect rules** (DNR-like) to requests (block / allow / redirect-to-local). It uses the same rule sets used by TheGuardian Extension.
-2. **Injects JS/CSS** into HTML documents to emulate extension-side page modifications. It uses the same JS/CSS assets used by TheGuardian Extension.
+- applying DNR-like rulesets
+- injecting CSS and JS into HTML pages
+- enforcing domain blocklists from `.blk` files
+- supporting a full-page whitelist / bypass model
+- exposing logs consumed by the WPF GUI
+- supporting streaming-safe behavior for SSE, uploads, and downloads
+- supporting auto-reload flows coordinated by the GUI
 
-It also includes two “hard” controls that operate above DNR rules:
+The addon is intentionally conservative in a few critical areas:
 
-- **Bypass** (per-site): make the add-on behave as if it doesn’t exist for a site.
-- **Site Blocklists** (per-file): completely deny navigation to listed domains, including HTTPS, so the browser cannot reach them.
+- HTML rewriting is isolated to the `response()` hook
+- SSE and large/binary transfers are handled in `responseheaders()` / `requestheaders()`
+- page whitelist logic uses a lease model to avoid reintroducing the old unstable top-remembered architecture
+- USERNAV tries to represent only true user page navigations, not browser internal traffic
 
-## Performance & Efficiency
+## Main goals of the current architecture
 
-TheGuardianDesktop runs as a **user-space network middlebox** (mitmproxy add-on).  
-This provides **system-wide coverage** (not limited to a single browser profile), but it also means some overhead is unavoidable compared to in-browser extensions.
+The current addon (version 2) is a rewrite intended to improve maintainability and stability compared to the old implementation (version 1). It's also significantly smaller and faster than the previous version.
 
-### What can feel slower (normal)
+Primary goals:
 
-Some websites may feel slightly slower to open compared to the same setup using a native browser extension.  
-This can be caused by:
+1. keep rulesets / injection / blockers / reload logic clearly separated
+2. avoid cross-site contamination in whitelist logic
+3. preserve compatibility with sensitive sites such as ChatGPT and YouTube
+4. expose logs that are easy for the GUI to consume
+5. keep configuration centralized in `config.json`
 
-- proxy-level processing on every request (matching, bypass checks, policy checks)
-- TLS interception / connection handling (depending on proxy mode)
-- high request volume websites (news portals, large SPAs)
+## High-level request lifecycle
 
-The goal of the add-on is to keep the overhead small, stable, and predictable.
+The addon logic is distributed across mitmproxy hooks:
 
-### Main optimizations implemented
+### `requestheaders(flow)`
 
-**1) Fast-path bypass**  
-If bypass is active for a site, the add-on exits early and skips:
+Used before request bodies are fully processed.
 
-- DNR matching
-- injection planning
-- rewrite/redirect logic
+Purpose:
 
-This is critical for modern SPAs and streaming apps (ChatGPT-like websites).
+- enable streaming uploads for large or chunked upload-like requests
 
-**2) Efficient DNR matching**
+This avoids buffering the full upload in the proxy.
 
-- Host-suffix indexing for `||domain^` rules
-- Fast substring matching for simple `urlFilter` values
-- Precompiled patterns where needed
+### `request(flow)`
 
-**3) Request metadata caching**
-Per-request (per-flow) metadata is cached and reused:
+Main request-time logic.
 
-- resource type (`document`, `xhr`, `script`, …)
-- initiator domain (when available)
-- normalized URL used by the matcher
+Purpose:
 
-This reduces duplicated parsing work on noisy websites.
+- compute client/browser key
+- evaluate whitelist / bypass
+- evaluate site blocklists
+- evaluate DNR-like rulesets
+- log MATCH / BYPASS / USERNAV / SITE_BLOCK
+- serve virtual control endpoints such as `/__tg/ctl`
 
-**4) Redirect resource caching**
-When rules redirect to local files, those resources are cached in memory to avoid repeated disk reads.
+This is the main decision point for filtering behavior.
 
-**5) Streaming compatibility**
-If the response is `text/event-stream` (SSE), streaming is enabled to preserve real-time rendering.
-This prevents “buffered” responses on modern SPAs.
+### `responseheaders(flow)`
 
-### Practical note
+Used after response headers arrive, before the body is fully buffered.
 
-Performance depends heavily on:
+Purpose:
 
-- the number of enabled rulesets
-- how “noisy” a site is (requests/second)
-- proxy mode (regular vs local interception)
-- the machine CPU and I/O
+- preserve SSE streaming
+- preserve large / binary / chunked downloads
+- avoid streaming HTML, because HTML may need later rewriting/injection in `response()`
 
-For best responsiveness:
+This hook is essential for ChatGPT/Github like streaming and for upload/download correctness.
 
-- keep debug logging disabled during normal usage
-- enable only the rulesets you actually need
-- use bypass for sites that are known to break with any filtering
+### `response(flow)`
 
-### Browser Extension vs Proxy Add-on (quick comparison)
+Main response-time logic for HTML.
 
-| Feature / Behavior                                  | Browser Extension (MV3 / DNR) | TheGuardianDesktop (mitmproxy add-on) |
-| --------------------------------------------------- |:-----------------------------:|:-------------------------------------:|
-| Works only inside the browser                       | ✅                             | ❌                                     |
-| System-wide coverage (multiple apps/browsers)       | ❌                             | ✅                                     |
-| Lowest latency / best “native” speed                | ✅                             | ❌ *(slightly more overhead)*          |
-| Enforceable hard blocking (before page loads)       | ✅                             | ✅                                     |
-| Hard domain navigation blocking (SNI/CONNECT level) | ❌ *(limited)*                 | ✅                                     |
-| CSS/JS injection capabilities                       | ✅                             | ✅ *(HTML response stage)*             |
-| Works with browsers without installing extensions   | ❌                             | ✅                                     |
-| Easier compatibility with “special” apps/clients    | ❌                             | ✅                                     |
-| Requires proxy setup / certificate (HTTPS MITM)     | ❌                             | ✅                                     |
+Purpose:
 
----
+- detect HTML documents
+- decide whether injection is allowed
+- inject CSS / JS / reload agent where appropriate
+- keep bypassed pages as untouched as possible
 
-## Contents
+This hook must remain careful: streaming HTML here would break rewriting.
 
-- [Key features](#key-features)
-- [High-level architecture](#high-level-architecture)
-- [Request pipeline](#request-pipeline)
-- [Response pipeline](#response-pipeline)
-- [How DNR rules are applied](#how-dnr-rules-are-applied)
-- [Bypass behavior](#bypass-behavior)
-- [Site Blocklists: hard navigation blocking](#site-blocklists-hard-navigation-blocking)
-- [Configuration](#configuration)
-- [Run (mitmdump / mitmproxy)](#run-mitmdump--mitmproxy)
-- [Logging and telemetry](#logging-and-telemetry)
-- [Performance notes](#performance-notes)
-- [Troubleshooting](#troubleshooting)
+## Whitelist / bypass model
 
----
+Whitelist support is one of the most important and delicate parts of the addon.
 
-## Key features
-
-### DNR-like static rules
-
-- Loads one or more **rulesets** from `assets/dnr_rules/*.json`.
-- Matches requests using common DNR fields (subset):
-  - `urlFilter` (including `||domain^` forms)
-  - `resourceTypes` (script/image/xhr/document/…)
-  - `initiatorDomains`, `requestDomains` (when present)
-- Executes the rule’s `action`:
-  - **block**: deny request
-  - **allow**: allow request
-  - **redirect**: serve a local resource from disk (or rewrite internally)
+### Goal
 
-### JS/CSS injection
+If a page belongs to a whitelisted site, all resources genuinely belonging to that page should be allowed through, without breaking unrelated tabs or unrelated sites.
 
-- Injects assets from:
-  - `assets/js/`
-  - `assets/css/`
-- Injection is applied only to HTML document responses (main-frame/sub-frame documents).
-- Injection supports phased execution strategies (e.g. “start” / “idle”) depending on configuration.
+### Why this is hard
 
-### Bypass (“act as if the add-on doesn’t exist”)
+Modern sites load many resources through chains such as:
 
-- If a site’s domain is listed in `bypass_hosts`, the add-on can bypass:
-  - all DNR filtering (block/redirect/allow)
-  - all injections (JS/CSS)
-  - all other modifications
-- Supports “active bypass” triggered by **top-level navigation** to a bypassed site.
-- Supports third-party bypass chaining (optional): bypass cascades to requests “caused by” that site.
-
-### SPA/streaming compatibility (ChatGPT and similar)
-
-Modern SPAs may stream responses using `text/event-stream` (SSE).  
-The add-on enables **streaming pass-through** for SSE so that token-by-token rendering is preserved even while the proxy is running.
+- ad-tech redirects
+- vendor domains
+- nested iframes
+- background fetches
+- requests where initiator/referer/origin do not clearly point back to the top page
 
-### Site Blocklists (hard block)
+A purely static whitelist check on the request host is not enough.
 
-- Reads one or more domain-list files (*.blk text files) and blocks navigation entirely.
-- Can block at:
-  - HTTP request stage
-  - TLS SNI stage (for interception modes)
-  - CONNECT stage (in regular/upstream proxy modes)
-- Shows a customizable **external HTML block page**.
-- Supports **per-blocklist block pages** with CSS/images served by the add-on using **same-host assets**.
+### Current approach
 
----
+The addon uses a **page bypass lease** model.
 
-## High-level architecture
+A lease is opened for a browser/client key when strong evidence exists that a whitelisted top page is active. That lease can then allow related resource chains for a short time.
 
-The add-on is made of three main components:
+This is much more conservative than the old remembered-top architecture, but much more stable.
 
-- `guardian_addon/guardian_addon.py`  
-  The mitmproxy add-on entry point.
+### Main concepts
 
-- `guardian_addon/guardian_core.py`  
-  Loads config, manages state, hooks request/response, performs bypass/blocklist checks, applies DNR, performs injection, logging/telemetry.
+#### Static whitelist
 
-- `guardian_addon/dnr_engine.py`  
-  DNR-like rule engine: loads rulesets and matches requests efficiently (indexes, caching, fast paths for common urlFilter patterns).
+A request can be bypassed immediately when its host matches a configured whitelist entry.
 
-In production, `dnr_engine.py` and `guardian_core.py` modules may be compiled using **Cython**.
+#### Link-based whitelist
 
-### Assets
+A request can also be bypassed when strong linkage exists via:
 
-- `assets/dnr_rules/*.json`: static DNR-like rulesets
-- `assets/js/*.js`: scripts to inject
-- `assets/css/*.css`: styles to inject
-- `assets/blocklists/*.txt|*.blk`: optional site blocklist files
-- `assets/blocklists/*.html|*.css|*.svg|...`: optional block pages + their assets
+- initiator
+- referer
+- origin
 
----
+#### Lease
 
-## Request pipeline
+When a whitelisted page is detected, the addon opens a short-lived lease:
 
-For each request, the add-on processes it in this general order:
+- `site`
+- `top_host`
+- `top_dom`
+- timestamp / expiry
 
-1. **Determine request metadata**
-   
-   - URL / host / scheme
-   - resource type (document, script, image, xhr, …)
-   - initiator domain (when available: Referer/Origin/Sec-Fetch-*)
+Later requests on the same browser key may inherit bypass when they look related to that whitelisted page.
 
-2. **Site Blocklists (hard block)**
-   
-   - If the request host matches any enabled site-blocklist:
-     - navigation/document requests are answered immediately with a block page (HTTP 451)
-     - other subresource requests are denied (403)
-   - This happens *before* DNR and injection logic.
+### Guardrails
 
-3. **Bypass logic**
-   
-   - If bypass is active for the current client (or this request matches `bypass_hosts`),
-     the add-on returns early and does **nothing** (no rules, no injection, no redirect).
+The lease logic contains guardrails to reduce contamination:
 
-4. **DNR matching**
-   
-   - Normalize URL for DNR matching (where needed)
-   - Find the first matching rule (respecting rule priority / order policy)
-   - Apply the action:
-     - **allow**: explicitly allow
-     - **block**: deny request
-     - **redirect**: serve local resource or rewrite internally
+- browser key now includes browser family, not only client IP
+- explicit other-first-party signals are treated carefully
+- ad-tech chains are recognized separately from unrelated first-party tabs
 
-5. **Pass-through**
-   
-   - If no rule matches, request continues unmodified.
+This is what prevents, for example, cnn.com in one browser tab from freely leaking into unrelated sites.
 
----
+### Logs
 
-## Response pipeline
+Relevant logs include:
 
-For each response, the add-on typically does:
+- `BYPASS`
+- `LEASE_HIT`
+- `LEASE_OPEN`
+- `LEASE_RESET`
 
-1. **Early exits**
-   
-   - If request is bypassed: do nothing
-   - If not HTML/document: do nothing
-   - If the response is from an internal block page or internal asset: do nothing
+These are especially useful for debugging placeholder-only ads and cross-tab contamination.
 
-2. **Streaming handling (SSE)**
-   
-   - If `Content-Type: text/event-stream` is detected, the add-on enables streaming
-     pass-through so the browser can render incremental chunks in real-time.
+## DNR-like rulesets
 
-3. **Injection**
-   
-   - Inject CSS and JS into HTML documents
-   - Designed to be fast:
-     - byte-level injection where possible
-     - avoids expensive decode/encode/recompress loops
+The addon loads DNR-like rulesets from JSON files configured in `config.json`.
 
----
+Supported behaviors include:
 
-## How DNR rules are applied
+- block
+- redirect
+- allow
+- modifyheaders (where applicable in the implementation)
 
-### Rulesets
+The rulesets are evaluated during `request()`.
 
-Rulesets are defined in `config.json` under `dnr_rulesets`:
+### Global master switch
 
-```json
-{
-  "id": "ads",
-  "path": "assets/dnr_rules/ads.json",
-  "enabled": true
-}
-```
+`globally_enable_rulesets` disables:
 
-Only enabled rulesets are loaded and used for matching.
+- rulesets
+- CSS injection
+- JS injection
+- redirect resources
 
-### Matching inputs
+This is intended as a GUI master switch.
 
-When matching a request, the engine uses:
+### Logs
 
-- **URL** (normalized)
+Each ruleset hit can produce `MATCH` lines, which the GUI can use for telemetry and counters.
 
-- **request host**
+## CSS / JS injection
 
-- **initiator domain** (when available)
+The addon supports injection into HTML documents when rulesets are globally enabled and the specific injection sections are enabled.
 
-- **resource type** (document/script/image/xhr/…)
+### CSS injection
 
-- optionally domain constraints (`requestDomains`, `initiatorDomains`) when present
+Used for:
 
-### urlFilter handling (common forms)
+- cosmetic filtering
+- hiding placeholders
+- page cleanup
 
-- `||example.com^`  
-  Domain-anchored rule: matches example.com and its subdomains.  
-  These rules are indexed by host suffix for speed.
+### JS injection
 
-- literal substring patterns  
-  Simple `urlFilter` values without wildcards are treated as fast substring checks.
+Used for:
 
-- wildcard patterns  
-  Some patterns require slower matching (e.g. wildcard-like semantics).
+- browser-like behavioral fixes
+- anti-annoyance flows
+- helper scripts derived from enabled rulesets
 
-### Action execution
+### Important constraint
 
-When a rule matches:
+Injection should not be forced onto bypassed pages unless explicitly intended. Sensitive sites can break if modified unnecessarily.
 
-- **block**
-  
-  - The request is denied immediately.
+## Site blockers (`.blk` files)
 
-- **allow**
-  
-  - The request is explicitly allowed.
+The addon can block navigation to domains listed in `.blk` files.
 
-- **redirect**
-  
-  - The add-on serves a local file (or a preconfigured local response).
-  
-  - Local redirect content is cached in memory for speed.
+This is conceptually separate from rulesets.
 
-### Precedence and ordering
+### Purpose
 
-1. Site Blocklists (hard deny)
+Rulesets emulate adblock/browser filtering.  
+Blocklists represent policy-level domain blocking.
 
-2. Bypass (do nothing at all)
+### Global master switch
 
-3. DNR matching (allow/block/redirect)
+`globally_enable_blockers` disables the entire `.blk`-based blocking system.
 
-4. Injection (response stage; only if not bypassed and response is HTML)
+### Behavior
 
----
+Depending on configuration, whitelist may or may not override site blocklists.
 
-## Bypass behavior
+### Logs
 
-### What “bypass” means
+When active, the addon can emit `SITE_BLOCK` logs and serve a block page.
 
-If a site/domain is bypassed, TheGuardianDesktop behaves as if it isn’t running:
+## USERNAV
 
-- no DNR rules applied
+USERNAV is used by the GUI to build the user’s visited-sites list.
 
-- no redirects
+### Purpose
 
-- no injections
+Represent true top-level pages intentionally visited by the user.
 
-- no rewriting
+### Challenge
 
-### `bypass_hosts`
+Browsers also make internal/document-like requests that can look like navigations.
 
-Configured in `config.json`:
+### Current approach
 
-`"bypass_hosts": ["chatgpt.com", "example.org"]`
+USERNAV uses a stricter heuristic:
 
-Matching is suffix-based: `cnn.com` bypasses `edition.cnn.com`, `www.cnn.com`, etc.
+- requires real document-navigation-like signals
+- prefers strong browser hints such as `sec-fetch-user`
+- rejects technical/API/download-like pseudo-navigation
 
-### “Active bypass”
+This avoids false positives like browser model downloads or optimization service fetches.
 
-Some sites break if even *background/system requests* are modified while the user is actively browsing them.  
-To provide stable exceptions, TheGuardianDesktop supports **active bypass**:
+### Logs
 
-- When a **top-level navigation** targets a bypass host, active bypass is enabled.
+Example:
 
-- While active bypass is enabled, requests are bypassed for that browsing context.
+- `USERNAV key=... domain=... url=...`
 
-### Third-party bypass chaining (recommended for modern SPAs)
+## Streaming logic
 
-Some sites load resources from separate hosts/CDNs; downloads (including ChatGPT attachments) often use different domains.
+Streaming support is intentionally separated from HTML rewriting.
 
-If enabled, bypass chaining allows bypass to propagate to third-party requests triggered by a bypassed site:
+### Response streaming
 
-`"bypass_chain_third_party": true`
+Handled in `responseheaders()`.
 
+Purpose:
 
-### uBlock-style allowlist bypass (client-scoped)
+- preserve SSE
+- preserve chunked/large/binary downloads
 
-In **mitmproxy local interception modes** (e.g. `mitmdump --mode local:chrome`) the proxy does **not** expose a real “tab id / top-frame id”.
-Some ad-tech chains also generate requests where the immediate `initiator` is **not** the original website (it can be another ad/SSP domain).
+This is what restored normal ChatGPT progressive streaming.
 
-Because of this, a classic “site-scoped” bypass may still see ADS/TRK rules applied to some third-party requests, producing:
+### Request streaming
 
-- partial ads rendering (empty placeholders)
-- many MATCH lines even on bypassed sites
-- slower page loads
+Handled in `requestheaders()`.
 
-To emulate how a browser adblocker allowlist behaves, TheGuardianDesktop provides an optional **uBlock-style allowlist bypass** controlled by:
+Purpose:
 
-- `bypass_ublock_allowlist`
-- `bypass_ublock_scope`
-- `bypass_ublock_client_timeout_sec`
-- `bypass_ublock_ads_domains`
+- avoid buffering large upload bodies
+- preserve upload behavior for large/chunked upload-like requests
 
-When enabled, and when a bypass host becomes **active** for a client, the add-on can bypass processing using one of these scopes:
+### Important rule
 
-- **`client`** *(most reliable)*  
-  Bypasses **everything for the whole client** while the bypassed site is active.  
-  This guarantees no placeholders and maximum speed, but it can temporarily “unfilter” other tabs of the same browser client.
+HTML is not streamed through this mechanism because HTML may need rewriting later.
 
-- **`client_ads_only`** *(less intrusive)*  
-  Bypasses the bypassed site + a configurable list of common **ad-tech domains** (DoubleClick / GoogleAds / Amazon / Criteo / Rubicon / …).  
-  This reduces side effects on other tabs, but if an ad endpoint is missing from the list you may still see some placeholders.
+## Auto-reload / reload agent
 
-Optional safety: `bypass_ublock_client_timeout_sec` automatically disables the client-scoped bypass if no traffic related to the bypassed site is observed for *N* seconds.
+The addon supports a browser reload agent and a virtual endpoint used by the GUI.
 
-Example configuration:
+### Purpose
 
-```json
-{
-  "bypass_hosts": ["thesun.co.uk"],
-  "bypass_ublock_allowlist": true,
-  "bypass_ublock_scope": "client",
-  "bypass_ublock_client_timeout_sec": 25
-}
-```
+When bypass or filtering state changes, the GUI may trigger page reload behavior so tabs reflect the new policy.
 
+### Components
 
-### Client key mode + TTL
+- injected reload agent script
+- virtual `/__tg/ctl` endpoint
+- config-driven generation / targets / mode
 
-Active bypass is tracked per “client key”:
+### Important caution
 
-- `"bypass_key_mode": "ip"`
+Reload and agent injection must stay conservative on sensitive pages.
 
-- `"bypass_key_mode": "ip_ua"` (recommended)
+## GUI integration
 
-- `"bypass_key_mode": "ip_port"`
+The WPF GUI depends on addon logs and config-driven behavior.
 
-- `"bypass_key_mode": "ip_ua_port"`
+The addon is designed to expose logs such as:
 
-TTL settings:
+- `USERNAV`
+- `MATCH`
+- `BYPASS`
+- `SITE_BLOCK`
+- telemetry-like streaming/debug lines
 
-`"bypass_active_ttl_seconds": 600, "bypass_context_ttl_seconds": 60`
+The GUI uses these for:
 
-Notes:
+- visited sites
+- counters
+- ruleset statistics
+- current state/debugging
+- config reload behavior
 
-- `bypass_active_ttl_seconds` controls how long bypass stays ON.
+## Recommended debugging workflow
 
-- `bypass_context_ttl_seconds` controls how long bypass context is kept for correlation/chaining.
+For whitelist/bypass issues:
 
-- TTL may be refreshed (“touched”) while traffic continues to keep bypass stable during navigation.
+1. inspect `BYPASS`, `LEASE_HIT`, `LEASE_OPEN`
+2. check whether requests still produce `MATCH`
+3. compare top page host, initiator, and lease fields
 
-### Bypass logs (on-change)
+For streaming issues:
 
-State changes are logged without spamming:
+1. inspect `STREAM_ON(SSE)`, `STREAM_ON(DL)`, `STREAM_ON(UL)`
+2. verify that HTML is not being streamed
+3. verify behavior on ChatGPT / uploads / downloads
 
-- `BYPASS_CTX_ON ...`
+For USERNAV issues:
 
-- `BYPASS_ON ...`
+1. inspect `USERNAV`
+2. verify request shape
+3. check whether pseudo-navigation requests are being filtered out
 
-- `BYPASS_OFF ...`
+## Design philosophy
 
----
+The addon should prefer:
 
-## Site Blocklists: hard navigation blocking
+- conservative correctness over overly clever attribution
+- localized fixes over global fragile heuristics
+- minimal interference with sensitive sites
+- logs that explain why something happened
 
-This feature prevents the browser from reaching listed domains at all.
+The current implementation is the result of multiple iterations focused on:
 
-### Blocklist files
-
-Text files where each line contains a domain/host, e.g.:
-
-`xvideos.com example.org 0.xxx-cdn.com`
-
-Comments and empty lines are ignored (`#`, `;`, `//`).
-
-### Configuration
-
-`"site_block_enabled": true, "site_blocklists": [   {     "id": "adult",     "path": "assets/blocklists/adult.blk",     "enabled": true,     "page_path": "assets/blocklists/blocked_adult.html",     "assets_dir": "assets/blocklists"   } ]`
-
-### When and how blocking occurs
-
-Depending on mode and protocol, blocking can occur at different layers:
-
-- **TLS ClientHello (SNI)**  
-  In interception modes where CONNECT is not used, TLS SNI provides the target host early.
-
-- **HTTP request stage**  
-  When an HTTP request is seen, blocked hosts are answered immediately with a block page or 403.
-
-- **CONNECT stage (regular/upstream proxy modes)**  
-  When CONNECT is used, blocked hosts are denied before the tunnel is created.
-
-### Block pages: external HTML + per-list pages
-
-Block pages are loaded from disk:
-
-- global default block page config (fallback)
-
-- per-blocklist `page_path` overrides the default
-
-### CSS/images with relative paths (same-host assets)
-
-Relative assets inside the block page (e.g. `<img src="logo.svg">`) are supported.
-
-To avoid timeouts and ensure assets load even when the domain is blocked, the add-on uses same-host asset serving:
-
-- relative paths are rewritten to an internal path under the same host
-
-- the add-on intercepts and serves the assets from `assets_dir`
-
----
-
-## Configuration
-
-The add-on reads configuration from `config.json`. The path can be passed via environment variable:
-
-- `TG_CONFIG=/path/to/config.json`
-
-Typical config keys:
-
-- `dnr_rulesets`
-
-- `bypass_hosts`
-
-- `bypass_chain_third_party`
-
-- `bypass_key_mode`
-
-- `bypass_active_ttl_seconds`
-
-- `bypass_context_ttl_seconds`
-
-- injection plan / asset paths (repo dependent)
-
-- `site_block_enabled`
-
-- `site_blocklists[]`
-
----
-
-## Logging and telemetry
-
-### Log prefixes
-
-- `[TG] ...` main add-on logs
-
-Common messages:
-
-- bypass transitions (`BYPASS_*`)
-
-- site blocks (`SITE_BLOCK ...`)
-
-- rule matches (`MATCH ...`)
-
-- injections (`INJECT_PLAN ...`, `INJECT ...`)
-
-### Match logging
-
-If enabled, matched network rules are logged:
-
-`"debug_log_matches": true`
-
-Optional file output:
-
-`"debug_log_matches_to_file": true, "debug_log_matches_file": "matches.log"`
-
-> Note: the file may be created on first write (i.e. after the first match).
-
----
-
-## Performance notes
-
-The add-on includes several optimizations:
-
-- Efficient DNR matching:
-  
-  - host-suffix indexing for `||domain^` rules
-  
-  - fast substring matching for simple literals
-  
-  - precompiled regex where needed
-
-- Caching:
-  
-  - match result cache
-  
-  - redirect resource cache (local files cached in memory)
-  
-  - request metadata caching per-flow (resource type, initiator, normalized URL)
-
-- Injection speed:
-  
-  - byte-level injection where possible
-  
-  - avoids costly decode/encode/recompress loops
-
-Even when optimized, a mitmproxy add-on is still a user-space network middlebox:  
-extensions remain “closer to the network stack” and often feel smoother,  
-but the proxy-layer approach enables system-wide coverage and enforceable policy.
-
----
-
-## Troubleshooting
-
-### “Site is in bypass_hosts but downloads fail”
-
-Some sites (including modern SPAs) use external file hosts/CDNs.  
-Enable third-party bypass chaining:
-
-`"bypass_chain_third_party": true`
-
-### “Bypass host is in bypass_hosts but rules still trigger”
-
-This can happen if bypass only checks initiator but requests come from iframes/scripts. Use active bypass and ensure `bypass_key_mode` fits your environment (usually `ip_ua`).
-
-### “No CONNECT logs”
-
-CONNECT exists in explicit proxy modes (`regular`, not implemented yet).  
-In local interception modes, TLS SNI/request-stage blocking are used instead.
-
-### In short
-
-Extensions are usually faster because they live inside the browser, while TheGuardianDesktop is more flexible and system-wide because it works at proxy level.
-
----
-
-## License / Disclaimer
-
-This project is a network-level filtering tool. Use responsibly and in accordance with local laws and policies.
+- stable whitelist behavior
+- preserving streaming
+- avoiding old remembered-top chaos
+- keeping the addon understandable and maintainable

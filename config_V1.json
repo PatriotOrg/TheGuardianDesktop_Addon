@@ -1,13 +1,13 @@
 {
-  "debug_log_matches": false,
+  "debug_log_matches": true,
   "debug_log_matches_to_file": false,
   "debug_log_matches_file": "matches.log",
   "debug_log_bypass_hit": false,
-  "debug_log_streaming": false,
+  "debug_log_streaming": true,
   "bypass_include_initiator": true,
   "bypass_key_mode": "ip_ua",
-  "bypass_active_ttl_seconds": 1800,
-  "bypass_context_ttl_seconds": 120,
+  "bypass_active_ttl_seconds": 3600,
+  "bypass_context_ttl_seconds": 180,
   "bypass_active_touch_interval_sec": 2.0,
   "bypass_promote_static_to_active": true,
   "bypass_ublock_allowlist": true,
@@ -16,7 +16,7 @@
   "bypass_ublock_client_timeout_sec": 30,
   "bypass_ublock_scope": "client",
   "active_bypass_system_hosts": [],
-  "debug_log_injection": false,
+  "debug_log_injection": true,
   "bypass_chain_third_party": true,
   "active_bypass_no_initiator_subrequests": true,
   "bypass_static_cache_size": 4096,
@@ -33,41 +33,55 @@
     {
       "id": "ads",
       "path": "assets/dnr_rules/ads.json",
+      "redpath": "assets/dnr_rules/cleanred/adsred.json",
       "enabled": true
     },
     {
       "id": "trk",
       "path": "assets/dnr_rules/trk.json",
+      "redpath": "assets/dnr_rules/cleanred/trkred.json",
       "enabled": true
     },
     {
       "id": "cookies",
       "path": "assets/dnr_rules/cookies.json",
+      "redpath": "assets/dnr_rules/cleanred/cookiesred.json",
       "enabled": true
     },
     {
       "id": "others",
       "path": "assets/dnr_rules/others.json",
+      "redpath": "assets/dnr_rules/cleanred/othersred.json",
       "enabled": false
     },
     {
       "id": "over",
       "path": "assets/dnr_rules/over.json",
+      "redpath": "assets/dnr_rules/cleanred/overred.json",
       "enabled": false
     },
     {
       "id": "soc",
       "path": "assets/dnr_rules/soc.json",
+      "redpath": "assets/dnr_rules/cleanred/socred.json",
       "enabled": false
     },
     {
       "id": "wid",
       "path": "assets/dnr_rules/wid.json",
+      "redpath": "assets/dnr_rules/cleanred/widred.json",
       "enabled": false
     },
     {
       "id": "site_fixes",
       "path": "assets/dnr_rules/site_fixes.json",
+      "redpath": "",
+      "enabled": true
+    },
+    {
+      "id": "wabshark",
+      "path": "assets/dnr_rules/wabshark.json",
+      "redpath": "",
       "enabled": true
     }
   ],
@@ -147,7 +161,6 @@
     "microsoft.com",
     "mitm.it",
     "mitmproxy.org",
-    "msn.com",
     "paypal.com",
     "slack.com",
     "slackb.com",
@@ -155,8 +168,8 @@
   ],
   "telemetry": {
     "enabled": true,
-    "log_interval_sec": 15,
-    "log_to_mitmproxy": false,
+    "log_interval_sec": 10,
+    "log_to_mitmproxy": true,
     "log_to_file": true,
     "file_path": "telemetry.log",
     "top_n": 8
@@ -168,7 +181,7 @@
     "prefix_scan_limit": 1048576
   },
   "match_cache_enabled": true,
-  "match_cache_size": 30000,
+  "match_cache_size": 50000,
   "host_decision_cache": {
     "enabled": true,
     "size": 8192,
@@ -178,10 +191,31 @@
   },
   "site_blocklists": [
     {
-      "id": "blocked_sites",
+      "id": "adult",
       "path": "assets/blocklists/adult.blk",
       "enabled": true,
       "page_path": "assets/blocklists/blocked_page_adult.html",
+      "assets_dir": "assets/blocklists"
+    },
+    {
+      "id": "fraud",
+      "path": "assets/blocklists/fraud.blk",
+      "enabled": true,
+      "page_path": "assets/blocklists/blocked_page_fraud.html",
+      "assets_dir": "assets/blocklists"
+    },
+    {
+      "id": "malware",
+      "path": "assets/blocklists/malware.blk",
+      "enabled": true,
+      "page_path": "assets/blocklists/blocked_page_malware.html",
+      "assets_dir": "assets/blocklists"
+    },
+    {
+      "id": "ransomware",
+      "path": "assets/blocklists/ransomware.blk",
+      "enabled": false,
+      "page_path": "assets/blocklists/blocked_page_ransomware.html",
       "assets_dir": "assets/blocklists"
     }
   ],
@@ -198,7 +232,7 @@
     "assets_mode": "same_host"
   },
   "csp_strip": {
-    "enabled": false,
+    "enabled": true,
     "remove_report_only": true
   },
   "csp_nonce_patch": {
@@ -214,5 +248,30 @@
   "stream_downloads": {
     "enabled": true,
     "min_bytes": 2097152
+  },
+  "log_usernav": true,
+  "usernav_include_url": true,
+  "usernav_dedupe_seconds": 4.0,
+  "usernav_log_candidates": false,
+  "usernav_fallback_enabled": false,
+  "usernav_fallback_allow_domains": [
+    "youtube.com"
+  ],
+  "usernav_log_prerender": true,
+  "auto_reload": {
+    "auto_reload_ctl_hosts": [
+      "example.com"
+    ],
+    "auto_reload_pages": false,
+    "auto_reload_script_id": "tg-auto-reload-agent",
+    "reload_generation": 0,
+    "reload_poll_ms": 5000,
+    "reload_only_when_visible": true,
+    "auto_reload_endpoint": "https://example.com/__tg/ctl",
+    "reload_active_until_ms": 0,
+    "auto_reload_exclude_hosts": [
+      "chatgpt.com",
+      "openai.com"
+    ]
   }
 }
